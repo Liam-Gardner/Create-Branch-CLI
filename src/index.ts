@@ -7,9 +7,12 @@ import path from "path";
 import { schema } from "./prompt.config";
 
 class TicketToBranch extends Command {
+  homedir = require("os").homedir();
+
   //#region Fields
   private authKey: string = "";
-  private usrStoragePath = path.join(__dirname, "/usr/config.json"); // TODO: change this path?
+  private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
+
   static description = "describe the command here";
   static flags = {
     // add --version flag to show CLI version
@@ -35,13 +38,17 @@ class TicketToBranch extends Command {
         flag: "r",
       });
       if (data) {
-        const d = JSON.parse(data);
-        if (d && d.authKey !== "") {
-          // set the authkey to the one stored in file
-          this.authKey = d.authKey;
-          console.log("Stored key found!");
-        } else {
-          console.log("None found!");
+        try {
+          const config = JSON.parse(data);
+          if (config && config.authKey !== "") {
+            // set the authkey to the one stored in file
+            this.authKey = config.authKey;
+            console.log("Stored key found!");
+          } else {
+            console.log("No stored key found!");
+          }
+        } catch (e) {
+          console.log("error parsing the config file", e.message);
         }
       }
     } else {
@@ -112,7 +119,7 @@ class TicketToBranch extends Command {
           },
         }
       );
-      // TODO: return the assigned to field also so we can work out the initials
+      // TODO: return the 'assigned to' field also so we can work out the initials
       return response.data.fields.summary as string;
     } catch (err) {
       // TODO: add some colour!
@@ -135,7 +142,14 @@ class TicketToBranch extends Command {
     },
   ];
 
+  createConfig() {
+    if (!fs.existsSync(this.usrStoragePath)) {
+      fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey: "" }));
+    }
+  }
+
   async run() {
+    this.createConfig();
     this.setAuthKey();
     await this.captureUserInput();
     const { args } = this.parse(TicketToBranch);
