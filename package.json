@@ -1,0 +1,51 @@
+{
+  "name": "ticket-to-branch",
+  "description": "Takes jira ticket name, parses it, and creates a local git branch",
+  "version": "0.0.0",
+  "author": "Liam-Gardner @Liam-Gardner",
+  "bin": {
+    "createbranch": "./bin/run"
+  },
+  "bugs": "https://github.com/Liam-Gardner/ticket-to-branch/issues",
+  "dependencies": {
+    "@oclif/command": "^1",
+    "@oclif/config": "^1",
+    "@oclif/plugin-help": "^3",
+    "tslib": "^1",
+    "axios": "^0.21.1",
+    "prompt": "^1.1.0"
+  },
+  "devDependencies": {
+    "@oclif/dev-cli": "^1",
+    "@types/node": "^10",
+    "rimraf": "^3.0.2",
+    "ts-node": "^8",
+    "typescript": "^3.3",
+    "@types/axios": "^0.14.0",
+    "@types/prompt": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "files": [
+    "/bin",
+    "/lib"
+  ],
+  "homepage": "https://github.com/Liam-Gardner/ticket-to-branch",
+  "keywords": [
+    "oclif"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "oclif": {
+    "bin": "createBranch"
+  },
+  "repository": "Liam-Gardner/ticket-to-branch",
+  "scripts": {
+    "posttest": "eslint . --ext .ts --config .eslintrc",
+    "prepack": "rimraf lib && tsc -b && oclif-dev readme",
+    "test": "echo NO TESTS",
+    "version": "oclif-dev readme && git add README.md"
+  },
+  "types": "lib/index.d.ts"
+}
