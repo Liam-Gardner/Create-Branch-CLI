@@ -11,7 +11,7 @@ class TicketToBranch extends Command {
 
   //#region Fields
   private authKey: string = "";
-  private usrStoragePath = path.join(this.homedir, ".ticket-to-branch"); // TODO: change this path?
+  private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
 
   static description = "describe the command here";
   static flags = {
@@ -119,7 +119,7 @@ class TicketToBranch extends Command {
           },
         }
       );
-      // TODO: return the assigned to field also so we can work out the initials
+      // TODO: return the 'assigned to' field also so we can work out the initials
       return response.data.fields.summary as string;
     } catch (err) {
       // TODO: add some colour!
