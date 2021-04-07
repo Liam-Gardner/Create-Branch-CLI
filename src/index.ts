@@ -5,11 +5,31 @@ import axios from "axios";
 import * as fs from "fs";
 import path from "path";
 import { schema } from "./prompt.config";
+import { Args, UserConfig } from "./types";
 
 class TicketToBranch extends Command {
   homedir = require("os").homedir();
 
+  private userConfig = {
+    authKey: "",
+    companyName: "",
+    prefix: "",
+    autoCreateBranch: true,
+  };
+
+  getUserConfig(): UserConfig {
+    return this.userConfig;
+  }
+
+  setUserConfig(config: UserConfig) {
+    // set config in state
+    this.userConfig = { ...this.userConfig, ...config };
+    // write config to file
+    fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
+  }
+
   //#region Fields
+  // remove authkey, get from userConfig instaed
   private authKey: string = "";
   private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
 
@@ -91,27 +111,44 @@ class TicketToBranch extends Command {
   }
 
   // TODO: use a flag to trigger this
+  // TODO: do not overwrite everything in the config
   private resetConfig() {
     console.log("removing bad key");
-    fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey: "" }));
+    const currentConfig = this.getUserConfig();
+    fs.writeFileSync(
+      this.usrStoragePath,
+      JSON.stringify({ ...currentConfig, authKey: "" })
+    );
   }
 
   async captureUserInput() {
-    if (this.authKey) {
+    // TODO: might need to check more than this cos we have more props now
+    const { authKey } = this.getUserConfig();
+    if (authKey) {
       return;
     } else {
       prompt.start();
-      const { username, apiKey } = await prompt.get(schema);
+      // This should be conditional - if I entered these before but I have no authkey do not make me fill these in again!
+      const { username, companyName, prefix, apiKey } = await prompt.get(
+        schema
+      );
       const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
-      this.setAuthKey(authKey);
+
+      // TODO: why do I need to convert these to strings?
+      this.setUserConfig({
+        authKey,
+        companyName: companyName as string,
+        prefix: prefix as string,
+      });
     }
   }
 
   async callJiraAPI(ticketNumber: string) {
+    const { companyName } = this.getUserConfig();
     try {
       const authKey = this.getAuthKey();
       const response = await axios.get(
-        `https://flipdish.atlassian.net/rest/api/2/issue/${ticketNumber}`,
+        `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}`,
         {
           headers: {
             Authorization: `Basic ${authKey}`,
@@ -119,7 +156,6 @@ class TicketToBranch extends Command {
           },
         }
       );
-      // TODO: return the 'assigned to' field also so we can work out the initials
       return response.data.fields.summary as string;
     } catch (err) {
       // TODO: add some colour!
@@ -128,13 +164,7 @@ class TicketToBranch extends Command {
     }
   }
 
-  static args: [
-    {
-      name: "ticketNumber";
-      required: boolean;
-      parse: (input: string) => string;
-    }
-  ] = [
+  static args: Args = [
     {
       name: "ticketNumber",
       required: true,
@@ -142,16 +172,35 @@ class TicketToBranch extends Command {
     },
   ];
 
+  // why do this? why not wait for the userinput and then create this
   createConfig() {
-    if (!fs.existsSync(this.usrStoragePath)) {
-      fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey: "" }));
+    if (fs.existsSync(this.usrStoragePath)) {
+      fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
+    }
+  }
+  // probably need a loadConfig on startup
+  loadConfig() {
+    if (fs.existsSync(this.usrStoragePath)) {
+      const data = fs.readFileSync(this.usrStoragePath, {
+        encoding: "utf8",
+        flag: "r",
+      });
+      try {
+        const parsedData: UserConfig = JSON.parse(data);
+        this.setUserConfig(parsedData);
+      } catch (e) {
+        console.log("error getting user config");
+        // TODO: process exit
+      }
     }
   }
 
   async run() {
-    this.createConfig();
-    this.setAuthKey();
+    this.loadConfig(); // TODO: What happens if error?
+    console.log(this.getUserConfig());
     await this.captureUserInput();
+
+    // WARN: If i grab the args before captureUserInput it fills in the user input!
     const { args } = this.parse(TicketToBranch);
 
     // TODO: why doesnt args. autocomplete?
@@ -159,10 +208,15 @@ class TicketToBranch extends Command {
 
     const sanitisedTicketName = this.sanitiseTicketName(ticketName);
 
+    const { autoCreateBranch, prefix } = this.getUserConfig();
+
     // TODO: do not execute until user is shown the branch name and likes it!
     // TODO: get initals and pass them here instead of hardcoded value
-    sanitisedTicketName &&
-      exec(`git checkout -b lg/${args.ticketNumber}-${sanitisedTicketName}`);
+    autoCreateBranch &&
+      sanitisedTicketName &&
+      exec(
+        `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
+      );
   }
 }
 export = TicketToBranch;
