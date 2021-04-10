@@ -5,10 +5,11 @@ import axios from "axios";
 import * as fs from "fs";
 import path from "path";
 import { schema } from "./prompt.config";
-import { Args, UserConfig } from "./types";
+import { Args, Flags, UserConfig } from "./types";
 
 class TicketToBranch extends Command {
-  homedir = require("os").homedir();
+  // #region fields
+  private homedir = require("os").homedir();
 
   private userConfig = {
     authKey: "",
@@ -17,6 +18,26 @@ class TicketToBranch extends Command {
     autoCreateBranch: true,
   };
 
+  private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
+
+  static description = "Create a git branch from your Jira ticket number";
+
+  static flags = {
+    version: flags.version({ char: "v" }),
+    help: flags.boolean({ char: "h" }),
+    reset: flags.boolean({ char: "r", description: "Reset the config" }),
+  };
+
+  static args: Args = [
+    {
+      name: "ticketNumber",
+      required: true,
+      parse: (input: string) => TicketToBranch.parseInput(input),
+    },
+  ];
+  //#endregion
+
+  // #region properties
   getUserConfig(): UserConfig {
     return this.userConfig;
   }
@@ -27,54 +48,18 @@ class TicketToBranch extends Command {
     // write config to file
     fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
   }
-
-  //#region Fields
-  // remove authkey, get from userConfig instaed
-  private authKey: string = "";
-  private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
-
-  static description = "describe the command here";
-  static flags = {
-    // add --version flag to show CLI version
-    version: flags.version({ char: "v" }),
-    help: flags.help({ char: "h" }),
-    // flag with a value (-n, --name=VALUE)
-    name: flags.string({ char: "n", description: "name to print" }),
-    // flag with no value (-f, --force)
-    force: flags.boolean({ char: "f" }),
-  };
   //#endregion
 
-  //#region Methods
-  getAuthKey() {
-    return this.authKey;
-  }
-
-  setAuthKey(authKey?: string) {
-    if (!authKey) {
-      console.log("Checking for stored key...");
-      const data = fs.readFileSync(this.usrStoragePath, {
-        encoding: "utf8",
-        flag: "r",
-      });
-      if (data) {
-        try {
-          const config = JSON.parse(data);
-          if (config && config.authKey !== "") {
-            // set the authkey to the one stored in file
-            this.authKey = config.authKey;
-            console.log("Stored key found!");
-          } else {
-            console.log("No stored key found!");
-          }
-        } catch (e) {
-          console.log("error parsing the config file", e.message);
-        }
-      }
-    } else {
-      console.log("Saving new key for next time!");
-      fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey }));
-      this.authKey = authKey;
+  // #region Methods
+  handleFlags(flags: Flags) {
+    const { help, reset, version } = flags;
+    if (reset) {
+      this.log("Resetting config...");
+      this.resetConfig();
+      this.log("reset complete");
+    }
+    if (help) {
+      this.log("eh good luck with that :)");
     }
   }
 
@@ -144,9 +129,9 @@ class TicketToBranch extends Command {
   }
 
   async callJiraAPI(ticketNumber: string) {
-    const { companyName } = this.getUserConfig();
+    const { authKey, companyName } = this.getUserConfig();
+    console.log("callJiraAPI", authKey);
     try {
-      const authKey = this.getAuthKey();
       const response = await axios.get(
         `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}`,
         {
@@ -164,21 +149,6 @@ class TicketToBranch extends Command {
     }
   }
 
-  static args: Args = [
-    {
-      name: "ticketNumber",
-      required: true,
-      parse: (input: string) => TicketToBranch.parseInput(input),
-    },
-  ];
-
-  // why do this? why not wait for the userinput and then create this
-  createConfig() {
-    if (fs.existsSync(this.usrStoragePath)) {
-      fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
-    }
-  }
-  // probably need a loadConfig on startup
   loadConfig() {
     if (fs.existsSync(this.usrStoragePath)) {
       const data = fs.readFileSync(this.usrStoragePath, {
@@ -189,19 +159,23 @@ class TicketToBranch extends Command {
         const parsedData: UserConfig = JSON.parse(data);
         this.setUserConfig(parsedData);
       } catch (e) {
-        console.log("error getting user config");
+        console.log();
+        this.error("error getting user config", { exit: 2 });
         // TODO: process exit
       }
     }
   }
+  //#endregion
 
+  // #region main
   async run() {
     this.loadConfig(); // TODO: What happens if error?
-    console.log(this.getUserConfig());
-    await this.captureUserInput();
-
     // WARN: If i grab the args before captureUserInput it fills in the user input!
-    const { args } = this.parse(TicketToBranch);
+    const { args, flags } = this.parse(TicketToBranch);
+
+    this.handleFlags(flags);
+    // console.log(this.getUserConfig());
+    await this.captureUserInput();
 
     // TODO: why doesnt args. autocomplete?
     const ticketName = await this.callJiraAPI(args.ticketNumber);
@@ -218,5 +192,6 @@ class TicketToBranch extends Command {
         `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
       );
   }
+  //#endregion
 }
 export = TicketToBranch;

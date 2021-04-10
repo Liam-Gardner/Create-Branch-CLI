@@ -13,4 +13,10 @@ type Args = [
   }
 ];
 
-export { Args, UserConfig };
+type Flags = {
+  help: boolean;
+  reset: boolean;
+  version: void;
+};
+
+export { Args, Flags, UserConfig };
