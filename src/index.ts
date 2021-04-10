@@ -5,56 +5,61 @@ import axios from "axios";
 import * as fs from "fs";
 import path from "path";
 import { schema } from "./prompt.config";
+import { Args, Flags, UserConfig } from "./types";
 
 class TicketToBranch extends Command {
-  homedir = require("os").homedir();
+  // #region fields
+  private homedir = require("os").homedir();
 
-  //#region Fields
-  private authKey: string = "";
+  private userConfig = {
+    authKey: "",
+    companyName: "",
+    prefix: "",
+    autoCreateBranch: true,
+  };
+
   private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
 
-  static description = "describe the command here";
+  static description = "Create a git branch from your Jira ticket number";
+
   static flags = {
-    // add --version flag to show CLI version
     version: flags.version({ char: "v" }),
-    help: flags.help({ char: "h" }),
-    // flag with a value (-n, --name=VALUE)
-    name: flags.string({ char: "n", description: "name to print" }),
-    // flag with no value (-f, --force)
-    force: flags.boolean({ char: "f" }),
+    help: flags.boolean({ char: "h" }),
+    reset: flags.boolean({ char: "r", description: "Reset the config" }),
   };
+
+  static args: Args = [
+    {
+      name: "ticketNumber",
+      required: true,
+      parse: (input: string) => TicketToBranch.parseInput(input),
+    },
+  ];
   //#endregion
 
-  //#region Methods
-  getAuthKey() {
-    return this.authKey;
+  // #region properties
+  getUserConfig(): UserConfig {
+    return this.userConfig;
   }
 
-  setAuthKey(authKey?: string) {
-    if (!authKey) {
-      console.log("Checking for stored key...");
-      const data = fs.readFileSync(this.usrStoragePath, {
-        encoding: "utf8",
-        flag: "r",
-      });
-      if (data) {
-        try {
-          const config = JSON.parse(data);
-          if (config && config.authKey !== "") {
-            // set the authkey to the one stored in file
-            this.authKey = config.authKey;
-            console.log("Stored key found!");
-          } else {
-            console.log("No stored key found!");
-          }
-        } catch (e) {
-          console.log("error parsing the config file", e.message);
-        }
-      }
-    } else {
-      console.log("Saving new key for next time!");
-      fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey }));
-      this.authKey = authKey;
+  setUserConfig(config: UserConfig) {
+    // set config in state
+    this.userConfig = { ...this.userConfig, ...config };
+    // write config to file
+    fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
+  }
+  //#endregion
+
+  // #region Methods
+  handleFlags(flags: Flags) {
+    const { help, reset, version } = flags;
+    if (reset) {
+      this.log("Resetting config...");
+      this.resetConfig();
+      this.log("reset complete");
+    }
+    if (help) {
+      this.log("eh good luck with that :)");
     }
   }
 
@@ -91,27 +96,44 @@ class TicketToBranch extends Command {
   }
 
   // TODO: use a flag to trigger this
+  // TODO: do not overwrite everything in the config
   private resetConfig() {
     console.log("removing bad key");
-    fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey: "" }));
+    const currentConfig = this.getUserConfig();
+    fs.writeFileSync(
+      this.usrStoragePath,
+      JSON.stringify({ ...currentConfig, authKey: "" })
+    );
   }
 
   async captureUserInput() {
-    if (this.authKey) {
+    // TODO: might need to check more than this cos we have more props now
+    const { authKey } = this.getUserConfig();
+    if (authKey) {
       return;
     } else {
       prompt.start();
-      const { username, apiKey } = await prompt.get(schema);
+      // This should be conditional - if I entered these before but I have no authkey do not make me fill these in again!
+      const { username, companyName, prefix, apiKey } = await prompt.get(
+        schema
+      );
       const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
-      this.setAuthKey(authKey);
+
+      // TODO: why do I need to convert these to strings?
+      this.setUserConfig({
+        authKey,
+        companyName: companyName as string,
+        prefix: prefix as string,
+      });
     }
   }
 
   async callJiraAPI(ticketNumber: string) {
+    const { authKey, companyName } = this.getUserConfig();
+    console.log("callJiraAPI", authKey);
     try {
-      const authKey = this.getAuthKey();
       const response = await axios.get(
-        `https://flipdish.atlassian.net/rest/api/2/issue/${ticketNumber}`,
+        `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}`,
         {
           headers: {
             Authorization: `Basic ${authKey}`,
@@ -119,7 +141,6 @@ class TicketToBranch extends Command {
           },
         }
       );
-      // TODO: return the 'assigned to' field also so we can work out the initials
       return response.data.fields.summary as string;
     } catch (err) {
       // TODO: add some colour!
@@ -128,41 +149,49 @@ class TicketToBranch extends Command {
     }
   }
 
-  static args: [
-    {
-      name: "ticketNumber";
-      required: boolean;
-      parse: (input: string) => string;
-    }
-  ] = [
-    {
-      name: "ticketNumber",
-      required: true,
-      parse: (input: string) => TicketToBranch.parseInput(input),
-    },
-  ];
-
-  createConfig() {
-    if (!fs.existsSync(this.usrStoragePath)) {
-      fs.writeFileSync(this.usrStoragePath, JSON.stringify({ authKey: "" }));
+  loadConfig() {
+    if (fs.existsSync(this.usrStoragePath)) {
+      const data = fs.readFileSync(this.usrStoragePath, {
+        encoding: "utf8",
+        flag: "r",
+      });
+      try {
+        const parsedData: UserConfig = JSON.parse(data);
+        this.setUserConfig(parsedData);
+      } catch (e) {
+        console.log();
+        this.error("error getting user config", { exit: 2 });
+        // TODO: process exit
+      }
     }
   }
+  //#endregion
 
+  // #region main
   async run() {
-    this.createConfig();
-    this.setAuthKey();
+    this.loadConfig(); // TODO: What happens if error?
+    // WARN: If i grab the args before captureUserInput it fills in the user input!
+    const { args, flags } = this.parse(TicketToBranch);
+
+    this.handleFlags(flags);
+    // console.log(this.getUserConfig());
     await this.captureUserInput();
-    const { args } = this.parse(TicketToBranch);
 
     // TODO: why doesnt args. autocomplete?
     const ticketName = await this.callJiraAPI(args.ticketNumber);
 
     const sanitisedTicketName = this.sanitiseTicketName(ticketName);
 
+    const { autoCreateBranch, prefix } = this.getUserConfig();
+
     // TODO: do not execute until user is shown the branch name and likes it!
     // TODO: get initals and pass them here instead of hardcoded value
-    sanitisedTicketName &&
-      exec(`git checkout -b lg/${args.ticketNumber}-${sanitisedTicketName}`);
+    autoCreateBranch &&
+      sanitisedTicketName &&
+      exec(
+        `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
+      );
   }
+  //#endregion
 }
 export = TicketToBranch;

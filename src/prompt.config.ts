@@ -6,10 +6,25 @@ export const schema = [
     description: "Enter your email",
   },
   {
+    name: "companyName",
+    required: true,
+    message: "Jira server name - usually your company name",
+    description:
+      "Enter the company name used in your Jira URL, e.g. www.{my-company}.atlassian.net",
+  },
+  {
+    name: "prefix",
+    required: false,
+    default: "",
+    message: "Prefix for your new branch",
+    description:
+      "Enter a prefix for your branch names, e.g. {your-name}/BTK-1234-Create-new-feature",
+  },
+  {
     name: "apiKey",
-    description: "Enter your personal api key",
     message:
-      "Your personal API key, create one in profile settings if you haven't already",
+      "Your personal JIRA API key, create one in profile settings if you haven't already",
+    description: "Enter your personal JIRA API key",
     required: true,
   },
 ];
