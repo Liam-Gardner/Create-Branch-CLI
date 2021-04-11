@@ -1,10 +1,10 @@
 import { Command, flags } from "@oclif/command";
 import { exec } from "child_process";
-import prompt from "prompt";
+import prompts from "prompts";
 import axios from "axios";
 import * as fs from "fs";
 import path from "path";
-import { schema } from "./prompt.config";
+import { getQuestions } from "./prompt.config";
 import { Args, Flags, UserConfig } from "./types";
 
 class TicketToBranch extends Command {
@@ -13,9 +13,10 @@ class TicketToBranch extends Command {
 
   private userConfig = {
     authKey: "",
+    autoCreateBranch: true,
     companyName: "",
     prefix: "",
-    autoCreateBranch: true,
+    username: "",
   };
 
   private usrStoragePath = path.join(this.homedir, ".ticket-to-branch");
@@ -23,16 +24,19 @@ class TicketToBranch extends Command {
   static description = "Create a git branch from your Jira ticket number";
 
   static flags = {
-    version: flags.version({ char: "v" }),
     help: flags.boolean({ char: "h" }),
     reset: flags.boolean({ char: "r", description: "Reset the config" }),
+    userConfig: flags.boolean({
+      char: "k",
+      description: "Show config saved to file",
+    }),
+    version: flags.version({ char: "v" }),
   };
 
   static args: Args = [
     {
       name: "ticketNumber",
-      required: true,
-      parse: (input: string) => TicketToBranch.parseInput(input),
+      required: false,
     },
   ];
   //#endregion
@@ -43,35 +47,38 @@ class TicketToBranch extends Command {
   }
 
   setUserConfig(config: UserConfig) {
-    // set config in state
     this.userConfig = { ...this.userConfig, ...config };
-    // write config to file
     fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
   }
   //#endregion
 
   // #region Methods
   handleFlags(flags: Flags) {
-    const { help, reset, version } = flags;
+    const { reset, userConfig } = flags;
     if (reset) {
+      const data = fs.readFileSync(this.usrStoragePath, {
+        encoding: "utf8",
+        flag: "r",
+      });
+      this.log(`Current config is ${data}`);
       this.log("Resetting config...");
       this.resetConfig();
-      this.log("reset complete");
+      this.log(
+        `reset complete, new config is ${JSON.stringify(this.getUserConfig())}`
+      );
+      this.exit(0);
     }
-    if (help) {
-      this.log("eh good luck with that :)");
-    }
-  }
-
-  static parseInput(ticketNumber: string) {
-    // INFO: incase we get btk-1234 split at the - and uppercase
-    const ticketNumberSplit = ticketNumber.split("-");
-
-    if (ticketNumberSplit.length < 2) {
-      return ticketNumber;
-    }
-
-    return `${ticketNumberSplit[0].toUpperCase()}-${ticketNumberSplit[1]}`;
+    if (userConfig) {
+      const data = fs.readFileSync(this.usrStoragePath, {
+        encoding: "utf8",
+        flag: "r",
+      });
+      this.log(`Current config is ${data}`);
+      this.exit(0);
+    } else
+      this.error("unknown flag", {
+        suggestions: ["--help for list of commands"],
+      });
   }
 
   sanitiseTicketName(ticketName?: string) {
@@ -95,42 +102,42 @@ class TicketToBranch extends Command {
     );
   }
 
-  // TODO: use a flag to trigger this
-  // TODO: do not overwrite everything in the config
-  private resetConfig() {
-    console.log("removing bad key");
+  private resetConfig(field?: keyof UserConfig) {
     const currentConfig = this.getUserConfig();
-    fs.writeFileSync(
-      this.usrStoragePath,
-      JSON.stringify({ ...currentConfig, authKey: "" })
-    );
+    if (field) {
+      this.setUserConfig({ ...currentConfig, [field]: "" });
+    } else {
+      this.setUserConfig({
+        authKey: "",
+        autoCreateBranch: true,
+        companyName: "",
+        prefix: "",
+        username: "",
+      });
+    }
   }
 
   async captureUserInput() {
-    // TODO: might need to check more than this cos we have more props now
-    const { authKey } = this.getUserConfig();
-    if (authKey) {
+    const userConfig = this.getUserConfig();
+    if (userConfig.authKey) {
       return;
     } else {
-      prompt.start();
-      // This should be conditional - if I entered these before but I have no authkey do not make me fill these in again!
-      const { username, companyName, prefix, apiKey } = await prompt.get(
-        schema
+      const { username, companyName, prefix, apiKey } = await prompts(
+        getQuestions(userConfig)
       );
       const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
 
-      // TODO: why do I need to convert these to strings?
       this.setUserConfig({
         authKey,
-        companyName: companyName as string,
-        prefix: prefix as string,
+        companyName,
+        prefix,
+        username,
       });
     }
   }
 
   async callJiraAPI(ticketNumber: string) {
     const { authKey, companyName } = this.getUserConfig();
-    console.log("callJiraAPI", authKey);
     try {
       const response = await axios.get(
         `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}`,
@@ -143,9 +150,8 @@ class TicketToBranch extends Command {
       );
       return response.data.fields.summary as string;
     } catch (err) {
-      // TODO: add some colour!
-      console.error("Jira API request error", err.message);
-      this.resetConfig();
+      this.resetConfig("authKey");
+      this.error("Jira API request error", err.message);
     }
   }
 
@@ -159,9 +165,10 @@ class TicketToBranch extends Command {
         const parsedData: UserConfig = JSON.parse(data);
         this.setUserConfig(parsedData);
       } catch (e) {
-        console.log();
-        this.error("error getting user config", { exit: 2 });
-        // TODO: process exit
+        this.error("error getting user config", {
+          exit: 0,
+          suggestions: ['Try "createBranch --reset" to reset your config'],
+        });
       }
     }
   }
@@ -169,27 +176,27 @@ class TicketToBranch extends Command {
 
   // #region main
   async run() {
-    this.loadConfig(); // TODO: What happens if error?
-    // WARN: If i grab the args before captureUserInput it fills in the user input!
     const { args, flags } = this.parse(TicketToBranch);
 
-    this.handleFlags(flags);
-    // console.log(this.getUserConfig());
+    if (!args.ticketNumber || args.ticketNumber.charAt(0) === "-") {
+      this.handleFlags(flags);
+    }
+
+    this.loadConfig();
     await this.captureUserInput();
 
-    // TODO: why doesnt args. autocomplete?
     const ticketName = await this.callJiraAPI(args.ticketNumber);
 
     const sanitisedTicketName = this.sanitiseTicketName(ticketName);
 
     const { autoCreateBranch, prefix } = this.getUserConfig();
 
-    // TODO: do not execute until user is shown the branch name and likes it!
-    // TODO: get initals and pass them here instead of hardcoded value
     autoCreateBranch &&
       sanitisedTicketName &&
       exec(
-        `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
+        prefix
+          ? `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
+          : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`
       );
   }
   //#endregion
