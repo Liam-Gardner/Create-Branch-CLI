@@ -1,6 +1,6 @@
 # ticket-to-branch
 
-Takes jira ticket name, parses it, and creates a local git branch
+Takes jira ticket number and creates a local git branch!
 
 [![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
 [![Version](https://img.shields.io/npm/v/ticket-to-branch.svg)](https://npmjs.org/package/ticket-to-branch)
