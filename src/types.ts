@@ -1,20 +1,21 @@
 type UserConfig = {
   authKey: string;
+  autoCreateBranch?: boolean;
   companyName: string;
   prefix: string;
-  autoCreateBranch?: boolean;
+  username: string;
 };
 
 type Args = [
   {
     name: "ticketNumber";
     required: boolean;
-    parse: (input: string) => string;
   }
 ];
 
 type Flags = {
   help: boolean;
+  userConfig: boolean;
   reset: boolean;
   version: void;
 };
