@@ -1,6 +1,6 @@
 {
   "name": "ticket-to-branch",
-  "description": "Takes jira ticket name, parses it, and creates a local git branch",
+  "description": "Converts Jira ticket number into a local git branch",
   "version": "0.0.0",
   "author": "Liam-Gardner @Liam-Gardner",
   "bin": {
@@ -33,7 +33,7 @@
   ],
   "homepage": "https://github.com/Liam-Gardner/ticket-to-branch",
   "keywords": [
-    "oclif"
+    "jira"
   ],
   "license": "MIT",
   "main": "lib/index.js",

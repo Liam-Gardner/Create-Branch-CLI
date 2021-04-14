@@ -9,7 +9,7 @@ export const getQuestions = ({
   {
     name: "username",
     type: "text",
-    message: "Your email address used to sign in to Jira",
+    message: "Enter the email address you use to sign in to Jira",
     initial: username,
   },
   {
@@ -36,13 +36,13 @@ export const getQuestions = ({
     name: "prefix",
     type: "text",
     message:
-      "Enter a prefix for your branch names, e.g. {your-name}/BTK-1234-Create-new-feature",
+      "Enter a prefix for your branch names, e.g. {your-name}/BTK-1234-Create-new-feature OR leave blank for none",
     initial: prefix,
   },
   {
     name: "apiKey",
     type: "password",
     message:
-      "Enter Your personal JIRA API key. Create one in your Jira profile settings if you haven't already",
+      "Enter your personal Jira API key. Create one in your Jira profile settings if you haven't already",
   },
 ];
