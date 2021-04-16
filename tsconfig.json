@@ -9,5 +9,7 @@
     "target": "es2017",
     "esModuleInterop": true
   },
+  "exclude": ["node_modules", "**/*.test.ts", "./build/**/*"],
   "include": ["src/**/*"]
 }
+  

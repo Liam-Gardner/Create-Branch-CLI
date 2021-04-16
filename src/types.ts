@@ -15,6 +15,7 @@ type Args = [
 
 type Flags = {
   help: boolean;
+  getJiraIssues: boolean;
   userConfig: boolean;
   reset: boolean;
   version: void;

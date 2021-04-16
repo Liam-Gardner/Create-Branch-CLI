@@ -6,6 +6,7 @@ import * as fs from "fs";
 import path from "path";
 import { getQuestions } from "./prompt.config";
 import { Args, Flags, UserConfig } from "./types";
+import { getJiraIssues } from "./services";
 
 class TicketToBranch extends Command {
   // #region fields
@@ -25,6 +26,7 @@ class TicketToBranch extends Command {
 
   static flags = {
     help: flags.boolean({ char: "h" }),
+    getJiraIssues: flags.boolean({ char: "j", description: "Get Jira issues" }),
     reset: flags.boolean({ char: "r", description: "Reset the config" }),
     userConfig: flags.boolean({
       char: "k",
@@ -54,7 +56,7 @@ class TicketToBranch extends Command {
 
   // #region Methods
   handleFlags(flags: Flags) {
-    const { reset, userConfig } = flags;
+    const { getJiraIssues, reset, userConfig } = flags;
     if (reset) {
       const data = fs.readFileSync(this.usrStoragePath, {
         encoding: "utf8",
@@ -75,13 +77,17 @@ class TicketToBranch extends Command {
       });
       this.log(`Current config is ${data}`);
       this.exit(0);
+    }
+
+    if (getJiraIssues) {
+      this.getListofTickets();
     } else
       this.error("unknown flag", {
         suggestions: ["--help for list of commands"],
       });
   }
 
-  sanitiseTicketName(ticketName?: string) {
+  static sanitiseTicketName(ticketName?: string) {
     // TODO: replace this with regex
     return (
       ticketName &&
@@ -122,17 +128,21 @@ class TicketToBranch extends Command {
     if (userConfig.authKey) {
       return;
     } else {
-      const { username, companyName, prefix, apiKey } = await prompts(
-        getQuestions(userConfig)
-      );
-      const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
+      try {
+        const { username, companyName, prefix, apiKey } = await prompts(
+          getQuestions(userConfig)
+        );
+        const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
 
-      this.setUserConfig({
-        authKey,
-        companyName,
-        prefix,
-        username,
-      });
+        this.setUserConfig({
+          authKey,
+          companyName,
+          prefix,
+          username,
+        });
+      } catch (e) {
+        this.error("captureUserInput", e);
+      }
     }
   }
 
@@ -174,6 +184,27 @@ class TicketToBranch extends Command {
   }
   //#endregion
 
+  //#region Import helpers
+  getJiraIssuesFunction = getJiraIssues;
+  async getListofTickets() {
+    const { authKey, companyName } = this.getUserConfig();
+    console.log(authKey);
+    console.log(companyName);
+    try {
+      if (authKey && companyName) {
+        const res = await this.getJiraIssuesFunction(authKey, companyName);
+        console.log(res);
+        this.exit(0);
+      } else {
+        this.exit(0);
+      }
+    } catch (e) {
+      this.exit(0);
+    }
+  }
+
+  //#endregion
+
   // #region main
   async run() {
     const { args, flags } = this.parse(TicketToBranch);
@@ -187,7 +218,7 @@ class TicketToBranch extends Command {
 
     const ticketName = await this.callJiraAPI(args.ticketNumber);
 
-    const sanitisedTicketName = this.sanitiseTicketName(ticketName);
+    const sanitisedTicketName = TicketToBranch.sanitiseTicketName(ticketName);
 
     const { autoCreateBranch, prefix } = this.getUserConfig();
 
@@ -201,4 +232,5 @@ class TicketToBranch extends Command {
   }
   //#endregion
 }
+
 export = TicketToBranch;
