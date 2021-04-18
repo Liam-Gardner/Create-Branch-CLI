@@ -7,7 +7,8 @@
     "rootDir": "src",
     "strict": true,
     "target": "es2017",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "noUnusedLocals": true
   },
   "exclude": ["node_modules", "**/*.test.ts", "./build/**/*"],
   "include": ["src/**/*"]

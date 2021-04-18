@@ -6,7 +6,6 @@ import * as fs from "fs";
 import path from "path";
 import { getQuestions } from "./prompt.config";
 import { Args, Flags, UserConfig } from "./types";
-import { getJiraIssues } from "./services";
 
 class TicketToBranch extends Command {
   // #region fields
