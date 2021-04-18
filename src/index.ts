@@ -6,6 +6,7 @@ import * as fs from "fs";
 import path from "path";
 import { getQuestions } from "./prompt.config";
 import { Args, Flags, UserConfig } from "./types";
+import { getJiraIssues } from "./services";
 
 class TicketToBranch extends Command {
   // #region fields
@@ -27,7 +28,7 @@ class TicketToBranch extends Command {
     help: flags.boolean({ char: "h" }),
     reset: flags.boolean({ char: "r", description: "Reset the config" }),
     userConfig: flags.boolean({
-      char: "k",
+      char: "c",
       description: "Show config saved to file",
     }),
     version: flags.version({ char: "v" }),
@@ -81,24 +82,17 @@ class TicketToBranch extends Command {
       });
   }
 
-  sanitiseTicketName(ticketName?: string) {
-    // TODO: replace this with regex
+  static sanitiseTicketName(ticketName?: string) {
     return (
       ticketName &&
       ticketName
-        .trim()
-        .replace(/&/g, "and")
-        .replace(/-/g, " ")
-        .replace(/  /g, " ")
-        .replace(/ /g, "-")
-        .replace(/\(/g, "")
-        .replace(/\)/g, "")
-        .replace(/'/g, "")
-        .replace(/\//g, "-")
-        .replace(/\\/g, "-")
-        .replace(/\[/g, "")
-        .replace(/\]/g, "")
-        .replace(/,/g, "")
+        .split(" ")
+        .filter((str) => str.length !== 0)
+        .filter((str) => str !== "-")
+        .map((str) =>
+          str.replace(/&/g, "and").replace(/%/g, "percent").replace(/[\W]/g, "")
+        )
+        .join("-")
     );
   }
 
@@ -122,17 +116,21 @@ class TicketToBranch extends Command {
     if (userConfig.authKey) {
       return;
     } else {
-      const { username, companyName, prefix, apiKey } = await prompts(
-        getQuestions(userConfig)
-      );
-      const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
+      try {
+        const { username, companyName, prefix, apiKey } = await prompts(
+          getQuestions(userConfig)
+        );
+        const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
 
-      this.setUserConfig({
-        authKey,
-        companyName,
-        prefix,
-        username,
-      });
+        this.setUserConfig({
+          authKey,
+          companyName,
+          prefix,
+          username,
+        });
+      } catch (e) {
+        this.error("captureUserInput", e);
+      }
     }
   }
 
@@ -187,18 +185,25 @@ class TicketToBranch extends Command {
 
     const ticketName = await this.callJiraAPI(args.ticketNumber);
 
-    const sanitisedTicketName = this.sanitiseTicketName(ticketName);
+    const sanitisedTicketName = TicketToBranch.sanitiseTicketName(ticketName);
 
     const { autoCreateBranch, prefix } = this.getUserConfig();
-
     autoCreateBranch &&
       sanitisedTicketName &&
       exec(
         prefix
           ? `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
-          : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`
+          : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`,
+        (error) => {
+          if (error) {
+            this.log(
+              `Sorry, we can\'t generate a valid git branch from this ticket name - '${ticketName}' \n${error}`
+            );
+          }
+        }
       );
   }
   //#endregion
 }
+
 export = TicketToBranch;
