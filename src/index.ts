@@ -26,10 +26,9 @@ class TicketToBranch extends Command {
 
   static flags = {
     help: flags.boolean({ char: "h" }),
-    getJiraIssues: flags.boolean({ char: "j", description: "Get Jira issues" }),
     reset: flags.boolean({ char: "r", description: "Reset the config" }),
     userConfig: flags.boolean({
-      char: "k",
+      char: "c",
       description: "Show config saved to file",
     }),
     version: flags.version({ char: "v" }),
@@ -56,7 +55,7 @@ class TicketToBranch extends Command {
 
   // #region Methods
   handleFlags(flags: Flags) {
-    const { getJiraIssues, reset, userConfig } = flags;
+    const { reset, userConfig } = flags;
     if (reset) {
       const data = fs.readFileSync(this.usrStoragePath, {
         encoding: "utf8",
@@ -77,10 +76,6 @@ class TicketToBranch extends Command {
       });
       this.log(`Current config is ${data}`);
       this.exit(0);
-    }
-
-    if (getJiraIssues) {
-      this.getListofTickets();
     } else
       this.error("unknown flag", {
         suggestions: ["--help for list of commands"],
@@ -88,23 +83,16 @@ class TicketToBranch extends Command {
   }
 
   static sanitiseTicketName(ticketName?: string) {
-    // TODO: replace this with regex
     return (
       ticketName &&
       ticketName
-        .trim()
-        .replace(/&/g, "and")
-        .replace(/-/g, " ")
-        .replace(/  /g, " ")
-        .replace(/ /g, "-")
-        .replace(/\(/g, "")
-        .replace(/\)/g, "")
-        .replace(/'/g, "")
-        .replace(/\//g, "-")
-        .replace(/\\/g, "-")
-        .replace(/\[/g, "")
-        .replace(/\]/g, "")
-        .replace(/,/g, "")
+        .split(" ")
+        .filter((str) => str.length !== 0)
+        .filter((str) => str !== "-")
+        .map((str) =>
+          str.replace(/&/g, "and").replace(/%/g, "percent").replace(/[\W]/g, "")
+        )
+        .join("-")
     );
   }
 
@@ -184,27 +172,6 @@ class TicketToBranch extends Command {
   }
   //#endregion
 
-  //#region Import helpers
-  getJiraIssuesFunction = getJiraIssues;
-  async getListofTickets() {
-    const { authKey, companyName } = this.getUserConfig();
-    console.log(authKey);
-    console.log(companyName);
-    try {
-      if (authKey && companyName) {
-        const res = await this.getJiraIssuesFunction(authKey, companyName);
-        console.log(res);
-        this.exit(0);
-      } else {
-        this.exit(0);
-      }
-    } catch (e) {
-      this.exit(0);
-    }
-  }
-
-  //#endregion
-
   // #region main
   async run() {
     const { args, flags } = this.parse(TicketToBranch);
@@ -221,13 +188,19 @@ class TicketToBranch extends Command {
     const sanitisedTicketName = TicketToBranch.sanitiseTicketName(ticketName);
 
     const { autoCreateBranch, prefix } = this.getUserConfig();
-
     autoCreateBranch &&
       sanitisedTicketName &&
       exec(
         prefix
           ? `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
-          : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`
+          : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`,
+        (error) => {
+          if (error) {
+            this.log(
+              `Sorry, we can\'t generate a valid git branch from this ticket name - '${ticketName}' \n${error}`
+            );
+          }
+        }
       );
   }
   //#endregion
