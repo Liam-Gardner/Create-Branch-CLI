@@ -1,9 +1,20 @@
 import axios from "axios";
+import { Worklog } from "./types";
 
-export async function getJiraIssues(authKey: string, companyName: string) {
+export async function addWorklog({
+  authKey,
+  companyName,
+  ticketNumber,
+  worklog,
+}: {
+  authKey: string;
+  companyName: string;
+  ticketNumber: string;
+  worklog: Worklog;
+}) {
   try {
-    const response = await axios.get(
-      `https://${companyName}.atlassian.net/rest/api/2/issuetype`,
+    const response = await axios.post(
+      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/worklog`, worklog
       {
         headers: {
           Authorization: `Basic ${authKey}`,
