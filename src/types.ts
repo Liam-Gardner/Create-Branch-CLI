@@ -15,9 +15,10 @@ type Args = [
 ];
 
 type Flags = {
-  help: boolean;
+  assignUserToTicket: boolean;
   userConfig: boolean;
   reset: boolean;
+  updateTicketStatus: string | undefined;
   updateTicketTime: string | undefined;
   version: void;
 };
@@ -32,6 +33,10 @@ type Worklog = {
   timeSpentSeconds: number;
 };
 
+type Status = {
+  transition: { id: string };
+};
+
 type UnitsOfTime = "m" | "h" | "d";
 
-export { Args, Flags, UnitsOfTime, UserConfig, Worklog };
+export { Args, Flags, UnitsOfTime, UserConfig, Status, Worklog };

@@ -5,7 +5,7 @@ import axios from "axios";
 import * as fs from "fs";
 import path from "path";
 import { getQuestions } from "./prompt.config";
-import { Args, Flags, UnitsOfTime, UserConfig, Worklog } from "./types";
+import { Args, Flags, Status, UnitsOfTime, UserConfig, Worklog } from "./types";
 
 class TicketToBranch extends Command {
   // #region fields
@@ -25,15 +25,24 @@ class TicketToBranch extends Command {
   static description = "Create a git branch from your Jira ticket number";
 
   static flags = {
-    help: flags.boolean({ char: "h" }),
+    assignUserToTicket: flags.boolean({
+      char: "a",
+      description: "Assign current user to ticket",
+    }),
     reset: flags.boolean({ char: "r", description: "Reset the config" }),
     userConfig: flags.boolean({
       char: "c",
-      description: "Show config saved to file",
+      description: "Show config",
+    }),
+    updateTicketStatus: flags.string({
+      char: "s",
+      description: "Update ticket status",
     }),
     updateTicketTime: flags.string({
       char: "t",
-      description: "Update time spent on ticket",
+      description:
+        "Update time spent on ticket in (m)inutes, (h)ours, or (d)ays",
+      helpValue: "4h",
     }),
     version: flags.version({ char: "v" }),
   };
@@ -59,17 +68,100 @@ class TicketToBranch extends Command {
 
   // #region Methods
   async handleFlags(flags: Flags) {
-    const { reset, userConfig, updateTicketTime } = flags;
+    const {
+      assignUserToTicket,
+      reset,
+      userConfig,
+      updateTicketStatus,
+      updateTicketTime,
+    } = flags;
+    if (assignUserToTicket) {
+      const { authKey, companyName, ticketNumber } = this.getUserConfig();
+
+      const { accountId } = await this.getCurrentUserDetails({
+        authKey,
+        companyName,
+      });
+
+      await this.assignUserToIssue({
+        authKey,
+        companyName,
+        ticketNumber,
+        accountId,
+      });
+      this.exit(0);
+    }
+    // TODO: handle blank authkeys!
+    if (updateTicketStatus) {
+      this.log("updateTicketStatus", updateTicketStatus);
+      const { authKey, companyName, ticketNumber } = this.getUserConfig();
+      // TODO: try/catch blocks
+      const ticketUpdate = async () => {
+        //TODO: if ticket is not assigned then transitions are limited
+        const options = await this.getTransitions({
+          authKey,
+          companyName,
+          ticketNumber,
+        });
+
+        const selectOptions = options?.map((o) => {
+          return { title: o.name, value: o.id };
+        });
+
+        // if we don't find it from the user input...
+        if (
+          selectOptions &&
+          !options?.some((option) => option.name === updateTicketStatus)
+        ) {
+          // ...give the user the list of possible statuses
+          const { transition } = await prompts({
+            type: "select",
+            name: "transition",
+            message: "Pick a status",
+            choices: selectOptions,
+            initial: 1,
+          });
+
+          await this.updateTicketStatus({
+            authKey,
+            companyName,
+            ticketNumber,
+            transition: {
+              transition: { id: transition },
+            },
+          });
+        } else {
+          const transition = options?.find(
+            (option) => option.name === updateTicketStatus
+          );
+          if (transition) {
+            await this.updateTicketStatus({
+              authKey,
+              companyName,
+              ticketNumber,
+              transition: {
+                transition: { id: transition.id },
+              },
+            });
+          } else {
+            this.error("Error updating ticket status");
+          }
+        }
+      };
+      await ticketUpdate();
+      this.exit(0);
+    }
     if (updateTicketTime) {
       const timeSpentSeconds = this.handleUpdateTicketTime(updateTicketTime);
       const { authKey, companyName, ticketNumber } = this.getUserConfig();
 
-      await this.addWorklog({
-        authKey,
-        companyName,
-        ticketNumber,
-        worklog: { timeSpentSeconds },
-      });
+      (async () =>
+        await this.addWorklog({
+          authKey,
+          companyName,
+          ticketNumber,
+          worklog: { timeSpentSeconds },
+        }))();
       this.exit(0);
     }
     if (reset) {
@@ -92,10 +184,11 @@ class TicketToBranch extends Command {
       });
       this.log(`Current config is ${data}`);
       this.exit(0);
-    } else
+    } else {
       this.error("unknown flag", {
         suggestions: ["--help for list of commands"],
       });
+    }
   }
 
   handleUpdateTicketTime(updateTicketTime: string) {
@@ -108,7 +201,7 @@ class TicketToBranch extends Command {
       }
       if (unitOfTime === "d") {
         return units * 86400;
-      } else return 0; //TODO: handle this
+      } else this.error("Unit of time must be either m, h or d");
     };
 
     const timeSpent = updateTicketTime.trim();
@@ -123,8 +216,9 @@ class TicketToBranch extends Command {
 
     if (!isNaN(Number(units))) {
       return toSeconds(Number(units), unitOfTime);
+    } else {
+      this.error("Sorry, error setting worklog");
     }
-    this.exit(0);
   }
 
   static sanitiseTicketName(ticketName?: string) {
@@ -219,9 +313,119 @@ class TicketToBranch extends Command {
     worklog: Worklog;
   }) {
     try {
+      this.log(`Adding worklog to ${ticketNumber}...`);
       const response = await axios.post(
         `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/worklog`,
         worklog,
+        {
+          headers: {
+            Authorization: `Basic ${authKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  async getTransitions({
+    authKey,
+    companyName,
+    ticketNumber,
+  }: {
+    authKey: string;
+    companyName: string;
+    ticketNumber: string;
+  }) {
+    try {
+      const response = await axios.get(
+        `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/transitions?expand=transitions.fields`,
+        {
+          headers: {
+            Authorization: `Basic ${authKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data.transitions.map(
+        //TODO: get response type
+        (status: any) =>
+          status.isAvailable && { id: status.id, name: status.name }
+      ) as Array<{ id: string; name: string }>;
+    } catch (err) {
+      console.log("error", err);
+    }
+  }
+
+  async updateTicketStatus({
+    authKey,
+    companyName,
+    ticketNumber,
+    transition,
+  }: {
+    authKey: string;
+    companyName: string;
+    ticketNumber: string;
+    transition: Status;
+  }) {
+    try {
+      const response = await axios.post(
+        `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/transitions`,
+        transition,
+
+        {
+          headers: {
+            Authorization: `Basic ${authKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  async getCurrentUserDetails({
+    authKey,
+    companyName,
+  }: {
+    authKey: string;
+    companyName: string;
+  }) {
+    try {
+      const response = await axios.get(
+        `https://${companyName}.atlassian.net/rest/api/2/myself`,
+        {
+          headers: {
+            Authorization: `Basic ${authKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  async assignUserToIssue({
+    authKey,
+    companyName,
+    ticketNumber,
+    accountId,
+  }: {
+    authKey: string;
+    companyName: string;
+    ticketNumber: string;
+    accountId: string;
+  }) {
+    try {
+      const response = await axios.put(
+        `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/assignee`,
+        { accountId },
         {
           headers: {
             Authorization: `Basic ${authKey}`,
@@ -260,7 +464,7 @@ class TicketToBranch extends Command {
     this.loadConfig();
 
     if (!args.ticketNumber || args.ticketNumber.charAt(0) === "-") {
-      this.handleFlags(flags);
+      await this.handleFlags(flags);
     } else {
       await this.captureUserInput(args.ticketNumber);
 

@@ -9,7 +9,7 @@ export const getQuestions = ({
   {
     name: "username",
     type: "text",
-    message: "Enter the email address you use to sign in to Jira",
+    message: "Enter the email address you use to sign in to Jira", // change this to username maybe
     initial: username,
   },
   {
