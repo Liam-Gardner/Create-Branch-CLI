@@ -155,13 +155,12 @@ class TicketToBranch extends Command {
       const timeSpentSeconds = this.handleUpdateTicketTime(updateTicketTime);
       const { authKey, companyName, ticketNumber } = this.getUserConfig();
 
-      (async () =>
-        await this.addWorklog({
-          authKey,
-          companyName,
-          ticketNumber,
-          worklog: { timeSpentSeconds },
-        }))();
+      await this.addWorklog({
+        authKey,
+        companyName,
+        ticketNumber,
+        worklog: { timeSpentSeconds },
+      });
       this.exit(0);
     }
     if (reset) {
