@@ -1,7 +1,7 @@
 {
   "name": "ticket-to-branch",
   "description": "Create branch from Jira ticket, update ticket status and worklog",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Liam-Gardner @Liam-Gardner",
   "bin": {
     "createbranch": "./bin/run"
