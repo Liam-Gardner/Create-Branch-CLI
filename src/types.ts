@@ -3,6 +3,7 @@ type UserConfig = {
   autoCreateBranch?: boolean;
   companyName: string;
   prefix: string;
+  ticketNumber: string;
   username: string;
 };
 
@@ -14,10 +15,28 @@ type Args = [
 ];
 
 type Flags = {
-  help: boolean;
+  assignUserToTicket: boolean;
   userConfig: boolean;
   reset: boolean;
+  updateTicketStatus: string | undefined;
+  updateTicketTime: string | undefined;
   version: void;
 };
 
-export { Args, Flags, UserConfig };
+type Worklog = {
+  comment?: string;
+  visibility?: {
+    type: string;
+    value: string;
+  };
+  started?: string; //"2017-12-07T09:23:19.552+0000";
+  timeSpentSeconds: number;
+};
+
+type Status = {
+  transition: { id: string };
+};
+
+type UnitsOfTime = "m" | "h" | "d";
+
+export { Args, Flags, UnitsOfTime, UserConfig, Status, Worklog };
