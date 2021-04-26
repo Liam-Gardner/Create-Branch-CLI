@@ -1,35 +1,27 @@
 import axios from "axios";
-import { Status, Worklog } from "./types";
+import { Status, UserConfig, Worklog } from "./types";
+import * as fs from "fs";
+import path from "path";
 
-export async function addWorklog({
-  authKey,
-  companyName,
-  ticketNumber,
-  worklog,
-}: {
-  authKey: string;
-  companyName: string;
-  ticketNumber: string;
-  worklog: Worklog;
-}) {
-  try {
-    const response = await axios.post(
-      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/worklog`,
-      worklog,
-      {
-        headers: {
-          Authorization: `Basic ${authKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    return response.data;
-  } catch (err) {
-    console.log(err);
+const data = fs.readFileSync(
+  path.join(require("os").homedir(), ".ticket-to-branch"),
+  {
+    encoding: "utf8",
+    flag: "r",
   }
-}
+);
 
-export async function getTransitions({
+const userConfig: UserConfig = JSON.parse(data);
+
+const jiraAPI = axios.create({
+  baseURL: `https://${userConfig.companyName}.atlassian.net/rest/api/2/`,
+  headers: {
+    Authorization: `Basic ${userConfig.authKey}`,
+    "Content-Type": "application/json",
+  },
+});
+
+export async function getTicket({
   authKey,
   companyName,
   ticketNumber,
@@ -40,7 +32,7 @@ export async function getTransitions({
 }) {
   try {
     const response = await axios.get(
-      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/transitions?expand=transitions.fields`,
+      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}`,
       {
         headers: {
           Authorization: `Basic ${authKey}`,
@@ -48,37 +40,73 @@ export async function getTransitions({
         },
       }
     );
-    return response.data.transitions.map(
-      (status: any) =>
-        status.isAvailable && { id: Number(status.id), name: status.name }
-    ) as Array<{ id: number; name: string }>;
+    return response.data.fields.summary as string;
+  } catch (err) {
+    throw err;
+  }
+}
+
+export async function getTicketStatus({
+  ticketNumber,
+}: {
+  ticketNumber: string;
+}) {
+  try {
+    const response = await jiraAPI.get(`issue/${ticketNumber}?fields=status`);
+    return response.data.fields.status.statusCategory.name as string;
+  } catch (err) {
+    throw err;
+  }
+}
+
+export async function addWorklog({
+  ticketNumber,
+  worklog,
+}: {
+  ticketNumber: string;
+  worklog: Worklog;
+}) {
+  try {
+    const response = await jiraAPI.post(
+      `issue/${ticketNumber}/worklog`,
+      worklog
+    );
+    return response.data;
   } catch (err) {
     console.log(err);
   }
 }
 
-export async function updateTicketStatus({
-  authKey,
-  companyName,
+export async function getTransitions({
+  ticketNumber,
+}: {
+  ticketNumber: string;
+}) {
+  try {
+    const response = await jiraAPI.get(
+      `issue/${ticketNumber}/transitions?expand=transitions.fields`
+    );
+    return response.data.transitions.map(
+      //TODO: get response type
+      (status: any) =>
+        status.isAvailable && { id: status.id, name: status.name }
+    ) as Array<{ id: string; name: string }>;
+  } catch (err) {
+    console.log("error", err);
+  }
+}
+
+export async function updateIssueStatusService({
   ticketNumber,
   transition,
 }: {
-  authKey: string;
-  companyName: string;
   ticketNumber: string;
   transition: Status;
 }) {
   try {
-    const response = await axios.post(
-      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/transitions`,
-      transition,
-
-      {
-        headers: {
-          Authorization: `Basic ${authKey}`,
-          "Content-Type": "application/json",
-        },
-      }
+    const response = await jiraAPI.post(
+      `/issue/${ticketNumber}/transitions`,
+      transition
     );
     return response.data;
   } catch (err) {
@@ -86,51 +114,26 @@ export async function updateTicketStatus({
   }
 }
 
-export async function assignUserToTicket({
-  authKey,
-  companyName,
+export async function assignUserToIssue({
   ticketNumber,
-  username,
+  accountId,
 }: {
-  authKey: string;
-  companyName: string;
   ticketNumber: string;
-  username: string;
+  accountId: string;
 }) {
   try {
-    const response = await axios.put(
-      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/assignee`,
-      { name: username },
-      {
-        headers: {
-          Authorization: `Basic ${authKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const response = await jiraAPI.put(`issue/${ticketNumber}/assignee`, {
+      accountId,
+    });
     return response.data;
   } catch (err) {
     console.log(err);
   }
 }
 
-export async function getCurrentUserDetails({
-  authKey,
-  companyName,
-}: {
-  authKey: string;
-  companyName: string;
-}) {
+export async function getCurrentUserDetails() {
   try {
-    const response = await axios.put(
-      `https://${companyName}.atlassian.net/rest/api/2/myself`,
-      {
-        headers: {
-          Authorization: `Basic ${authKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const response = await jiraAPI.get("myself");
     return response.data;
   } catch (err) {
     console.log(err);

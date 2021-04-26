@@ -1,6 +1,7 @@
 type UserConfig = {
   authKey: string;
   autoCreateBranch?: boolean;
+  branchCheckoutTime: string;
   companyName: string;
   prefix: string;
   ticketNumber: string;
