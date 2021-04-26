@@ -3,6 +3,7 @@ import { Status, UserConfig, Worklog } from "./types";
 import * as fs from "fs";
 import path from "path";
 
+//#region SETUP
 const data = fs.readFileSync(
   path.join(require("os").homedir(), ".ticket-to-branch"),
   {
@@ -20,7 +21,9 @@ const jiraAPI = axios.create({
     "Content-Type": "application/json",
   },
 });
+//#endregion
 
+//#region Endpoints
 export async function getTicket({
   authKey,
   companyName,
@@ -139,3 +142,4 @@ export async function getCurrentUserDetails() {
     console.log(err);
   }
 }
+//#endregion
