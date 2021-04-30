@@ -118,28 +118,57 @@ export async function updateIssueStatusService({
 }
 
 export async function assignUserToIssue({
+  authKey,
+  companyName,
   ticketNumber,
   accountId,
 }: {
+  authKey: string;
+  companyName: string;
   ticketNumber: string;
   accountId: string;
 }) {
   try {
-    const response = await jiraAPI.put(`issue/${ticketNumber}/assignee`, {
-      accountId,
-    });
+    const response = await axios.put(
+      `https://${companyName}.atlassian.net/rest/api/2/issue/${ticketNumber}/assignee`,
+      {
+        accountId,
+      },
+      {
+        headers: {
+          Authorization: `Basic ${authKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
     return response.data;
   } catch (err) {
-    console.log(err);
+    throw err;
+    // console.log(err);
   }
 }
 
-export async function getCurrentUserDetails() {
+export async function getCurrentUserDetails({
+  authKey,
+  companyName,
+}: {
+  authKey: string;
+  companyName: string;
+}) {
   try {
-    const response = await jiraAPI.get("myself");
+    const response = await axios.get(
+      `https://${companyName}.atlassian.net/rest/api/2/myself`,
+      {
+        headers: {
+          Authorization: `Basic ${authKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
     return response.data;
   } catch (err) {
-    console.log(err);
+    throw err;
+    // console.log(err);
   }
 }
 //#endregion

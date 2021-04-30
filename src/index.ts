@@ -14,6 +14,7 @@ import {
   updateIssueStatusService,
   // getTicketStatus,
 } from "./services";
+import { parseDate } from "./utils";
 
 class TicketToBranch extends Command {
   // #region fields
@@ -86,17 +87,30 @@ class TicketToBranch extends Command {
       updateTicketStatus,
       updateTicketTime,
     } = flags;
+
+    const { authKey, companyName, ticketNumber } = this.getUserConfig();
+
+    // TODO: replace me with a switch after tests are written
     if (assignUserToTicket) {
-      const { ticketNumber } = this.getUserConfig();
-
-      const { accountId } = await getCurrentUserDetails();
-
-      await assignUserToIssue({
-        ticketNumber,
-        accountId,
-      });
+      if (authKey && companyName && ticketNumber) {
+        try {
+          const { accountId } = await getCurrentUserDetails({
+            authKey,
+            companyName,
+          });
+          await assignUserToIssue({
+            authKey,
+            companyName,
+            ticketNumber,
+            accountId,
+          });
+        } catch (error) {
+          // TODO: Handle errors better
+          this.error(error);
+        }
+      }
     }
-    // TODO: handle blank authkeys!
+    // TODO: handle blank authkeys (and comapnyName)! ESSENTIAL!!!
     if (updateTicketStatus) {
       const { ticketNumber } = this.getUserConfig();
       // TODO: try/catch blocks
@@ -190,6 +204,7 @@ class TicketToBranch extends Command {
       this.log(`Current config is ${data}`);
       this.exit(0);
     } else {
+      // TODO: Make this a whole lot clearer!
       // We only have one possible arg
       if (!!Object.keys(flags).length && Object.values(args)[0] === undefined) {
         // if we were dealing with flags but no args then just exit
@@ -268,29 +283,15 @@ class TicketToBranch extends Command {
 
   async captureUserInput(ticketNumber: string) {
     const userConfig = this.getUserConfig();
-    if (userConfig.authKey) {
-      return;
-    } else {
-      try {
+
+    try {
+      // First time set up
+      if (!userConfig.authKey) {
         const { username, companyName, prefix, apiKey } = await prompts(
           getQuestions(userConfig)
         );
         const authKey = Buffer.from(`${username}:${apiKey}`).toString("base64");
-        const dateNow = new Date();
-
-        function parseDate(date: Date) {
-          const day = ("0" + date.getDate()).slice(-2);
-          const month = ("0" + (date.getMonth() + 1)).slice(-2);
-          const year = date.getFullYear();
-          const hours = date.getHours();
-          const minutes = date.getMinutes();
-          const seconds = date.getSeconds();
-
-          return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000+0000`;
-        }
-
-        const branchCheckoutTime = parseDate(dateNow);
-
+        const branchCheckoutTime = parseDate(new Date());
         this.setUserConfig({
           authKey,
           branchCheckoutTime,
@@ -299,9 +300,17 @@ class TicketToBranch extends Command {
           username,
           ticketNumber,
         });
-      } catch (e) {
-        this.error("captureUserInput", e);
+      } else {
+        // User has done this before and we just need the new ticket info
+        const branchCheckoutTime = parseDate(new Date());
+        this.setUserConfig({
+          ...this.userConfig,
+          branchCheckoutTime,
+          ticketNumber,
+        });
       }
+    } catch (e) {
+      this.error("captureUserInput", e);
     }
   }
 
@@ -327,49 +336,56 @@ class TicketToBranch extends Command {
   // #region main
   async run() {
     const { args, flags } = this.parse(TicketToBranch);
+    const checkoutBranch = async () => {
+      const {
+        authKey,
+        autoCreateBranch,
+        companyName,
+        prefix,
+        ticketNumber,
+      } = this.getUserConfig();
+
+      try {
+        const ticketName = await getTicket({
+          authKey,
+          companyName,
+          ticketNumber,
+        });
+
+        const sanitisedTicketName = TicketToBranch.sanitiseTicketName(
+          ticketName
+        );
+
+        autoCreateBranch &&
+          sanitisedTicketName &&
+          exec(
+            prefix
+              ? `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
+              : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`,
+            (error) => {
+              if (error) {
+                this.log(
+                  `Sorry, we can\'t generate a valid git branch from this ticket name - '${ticketName}' \n${error}`
+                );
+              }
+            }
+          );
+      } catch (err) {
+        this.resetConfig("authKey"); //TODO: hmmm
+        this.error("Jira API request error", err.message);
+      }
+    };
 
     this.loadConfig();
-
+    if (Object.keys(args).length && args.ticketNumber) {
+      await this.captureUserInput(args.ticketNumber);
+    }
     if (Object.keys(flags).length) {
       await this.handleFlags(flags, args);
     }
-
-    await this.captureUserInput(args.ticketNumber);
-    const {
-      authKey,
-      autoCreateBranch,
-      companyName,
-      prefix,
-      ticketNumber,
-    } = this.getUserConfig();
-
-    try {
-      const ticketName = await getTicket({
-        authKey,
-        companyName,
-        ticketNumber,
-      });
-
-      const sanitisedTicketName = TicketToBranch.sanitiseTicketName(ticketName);
-
-      autoCreateBranch &&
-        sanitisedTicketName &&
-        exec(
-          prefix
-            ? `git checkout -b ${prefix}/${args.ticketNumber}-${sanitisedTicketName}`
-            : `git checkout -b ${args.ticketNumber}-${sanitisedTicketName}`,
-          (error) => {
-            if (error) {
-              this.log(
-                `Sorry, we can\'t generate a valid git branch from this ticket name - '${ticketName}' \n${error}`
-              );
-            }
-          }
-        );
-    } catch (err) {
-      this.resetConfig("authKey"); //TODO: hmmm
-      this.error("Jira API request error", err.message);
-    }
+    // The above will exit the process if any errors otherwise if all good we can try to checkout the branch
+    // Or in the case of no command args the handleFlags will do what it has to do and then exit before this line
+    checkoutBranch();
   }
   //#endregion
 }
