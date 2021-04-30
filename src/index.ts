@@ -329,6 +329,8 @@ class TicketToBranch extends Command {
           suggestions: ['Try "createBranch --reset" to reset your config'],
         });
       }
+    } else {
+      fs.writeFileSync(this.usrStoragePath, JSON.stringify(this.userConfig));
     }
   }
   //#endregion

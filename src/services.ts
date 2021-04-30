@@ -4,15 +4,16 @@ import * as fs from "fs";
 import path from "path";
 
 //#region SETUP
-const data = fs.readFileSync(
-  path.join(require("os").homedir(), ".ticket-to-branch"),
-  {
+const homedir = require("os").homedir();
+const usrStoragePath = path.join(homedir, ".ticket-to-branch");
+const data =
+  fs.existsSync(usrStoragePath) &&
+  fs.readFileSync(path.join(require("os").homedir(), ".ticket-to-branch"), {
     encoding: "utf8",
     flag: "r",
-  }
-);
+  });
 
-const userConfig: UserConfig = JSON.parse(data);
+const userConfig: UserConfig = data && JSON.parse(data);
 
 const jiraAPI = axios.create({
   baseURL: `https://${userConfig.companyName}.atlassian.net/rest/api/2/`,
